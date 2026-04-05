@@ -1,0 +1,7 @@
+{
+  "name": "Passport Photo Pro",
+  "description": "Tạo ảnh hộ chiếu chuyên nghiệp từ ảnh selfie. Tự động xóa phông, thay trang phục véc & cà vạt, chuẩn kích thước 3x4.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
