@@ -42,8 +42,27 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'upload' | 'preview' | 'camera'>('upload');
   const [showDownloadModal, setShowDownloadModal] = useState(false);
   const [fileName, setFileName] = useState('passport-photo-3x4');
+  const [hasApiKey, setHasApiKey] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  // Check if user has selected an API key
+  React.useEffect(() => {
+    const checkKey = async () => {
+      if (window.aistudio?.hasSelectedApiKey) {
+        const selected = await window.aistudio.hasSelectedApiKey();
+        setHasApiKey(selected);
+      }
+    };
+    checkKey();
+  }, []);
+
+  const handleSelectKey = async () => {
+    if (window.aistudio?.openSelectKey) {
+      await window.aistudio.openSelectKey();
+      setHasApiKey(true); // Proceed assuming success as per guidance
+    }
+  };
 
   const startCamera = async () => {
     setActiveTab('camera');
@@ -120,9 +139,12 @@ export default function App() {
     setState(prev => ({ ...prev, isProcessing: true, error: null }));
 
     try {
+      // Create a fresh instance to ensure it uses the latest selected key
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
+      
       const base64Data = state.originalImage.split(',')[1];
-      const response = await genAI.models.generateContent({
-        model: 'gemini-2.5-flash-image',
+      const response = await ai.models.generateContent({
+        model: 'gemini-3.1-flash-image-preview',
         contents: {
           parts: [
             {
@@ -136,6 +158,12 @@ export default function App() {
             },
           ],
         },
+        config: {
+          imageConfig: {
+            aspectRatio: "3:4",
+            imageSize: "1K"
+          }
+        }
       });
 
       let processedUrl = null;
@@ -151,12 +179,21 @@ export default function App() {
       } else {
         throw new Error('Could not generate processed image. Please try again.');
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
+      let errorMessage = 'Đã có lỗi xảy ra khi xử lý ảnh. Vui lòng thử lại với ảnh khác.';
+      
+      if (err.message?.includes('429') || err.message?.includes('quota') || err.message?.includes('RESOURCE_EXHAUSTED')) {
+        errorMessage = 'Hạn ngạch (Quota) đã hết. Vui lòng đợi 1-2 phút hoặc nhấn nút "Chọn API Key" để sử dụng hạn mức cá nhân.';
+      } else if (err.message?.includes('not found')) {
+        errorMessage = 'Lỗi kết nối API. Vui lòng nhấn nút "Chọn API Key" để cấp quyền lại.';
+        setHasApiKey(false);
+      }
+
       setState(prev => ({ 
         ...prev, 
         isProcessing: false, 
-        error: 'Đã có lỗi xảy ra khi xử lý ảnh. Vui lòng thử lại với ảnh khác.' 
+        error: errorMessage 
       }));
     }
   };
@@ -311,6 +348,14 @@ export default function App() {
             <h1 className="text-xl font-bold tracking-tight text-slate-800">Passport Photo Pro</h1>
           </div>
           <div className="hidden sm:flex items-center gap-6 text-sm font-medium text-slate-500">
+            {!hasApiKey && (
+              <button 
+                onClick={handleSelectKey}
+                className="text-xs bg-blue-50 text-blue-600 px-3 py-1.5 rounded-lg font-bold hover:bg-blue-100 transition-all"
+              >
+                Cấp quyền API
+              </button>
+            )}
             <span className="text-blue-600">Xử lý AI</span>
             <span>Thay trang phục</span>
             <span>Kích thước 3x4</span>
@@ -542,7 +587,7 @@ export default function App() {
                               transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
                               className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full"
                             />
-                            <p className="text-sm font-medium text-slate-500 animate-pulse">Đang xóa phông...</p>
+                            <p className="text-sm font-medium text-slate-500 animate-pulse">Đang xử lý bằng AI...</p>
                           </div>
                         ) : state.processedImage ? (
                           <img 
@@ -554,7 +599,15 @@ export default function App() {
                         ) : state.error ? (
                           <div className="p-6 text-center">
                             <AlertCircle className="w-12 h-12 text-red-400 mx-auto mb-4" />
-                            <p className="text-sm text-red-500 font-medium">{state.error}</p>
+                            <p className="text-sm text-red-500 font-medium mb-4">{state.error}</p>
+                            {(state.error.includes('Hạn ngạch') || state.error.includes('API Key')) && (
+                              <button 
+                                onClick={handleSelectKey}
+                                className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded-lg font-bold transition-all"
+                              >
+                                Chọn API Key cá nhân
+                              </button>
+                            )}
                           </div>
                         ) : (
                           <div className="text-center p-8">
